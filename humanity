@@ -1,0 +1,100 @@
+// build.gradle dependencies
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'com.google.maps:google-maps-services:0.18.0'
+    runtimeOnly 'mysql:mysql-connector-java'
+}
+
+// application.properties
+spring.datasource.url=jdbc:mysql://localhost:3306/wooltracking
+spring.datasource.username=root
+spring.datasource.password=password
+google.maps.api.key=YOUR_GOOGLE_MAPS_API_KEY
+
+// WoolBatch.java
+import javax.persistence.*;
+import java.util.Date;
+
+@Entity
+public class WoolBatch {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String batchId;
+    private String farmLocation;
+    private Date shearingDate;
+    private String qualityGrade;
+    private String currentLocation;
+    private Date lastUpdated;
+
+    // Getters and setters
+}
+
+// LocationUpdate.java
+public class LocationUpdate {
+    private String batchId;
+    private String newLocation;
+
+    // Getters and setters
+}
+
+// WoolBatchRepository.java
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface WoolBatchRepository extends JpaRepository<WoolBatch, Long> {
+    WoolBatch findByBatchId(String batchId);
+}
+
+// WoolBatchController.java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import com.google.maps.GeoApiContext;
+import com.google.maps.GeocodingApi;
+import com.google.maps.model.GeocodingResult;
+
+@RestController
+@RequestMapping("/api/wool")
+public class WoolBatchController {
+    @Autowired
+    private WoolBatchRepository woolBatchRepository;
+
+    private GeoApiContext geoApiContext = new GeoApiContext.Builder()
+            .apiKey("YOUR_GOOGLE_MAPS_API_KEY")
+            .build();
+
+    @PostMapping("/create")
+    public WoolBatch createBatch(@RequestBody WoolBatch batch) {
+        return woolBatchRepository.save(batch);
+    }
+
+    @GetMapping("/track/{batchId}")
+    public WoolBatch trackBatch(@PathVariable String batchId) {
+        return woolBatchRepository.findByBatchId(batchId);
+    }
+
+    @PostMapping("/updateLocation")
+    public WoolBatch updateLocation(@RequestBody LocationUpdate locationUpdate) throws Exception {
+        WoolBatch batch = woolBatchRepository.findByBatchId(locationUpdate.getBatchId());
+        if (batch != null) {
+            GeocodingResult[] results = GeocodingApi.geocode(geoApiContext, locationUpdate.getNewLocation()).await();
+            if (results.length > 0) {
+                batch.setCurrentLocation(results[0].formattedAddress);
+                batch.setLastUpdated(new Date());
+                woolBatchRepository.save(batch);
+            }
+        }
+        return batch;
+    }
+}
+
+// WoolTrackingApplication.java
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class WoolTrackingApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(WoolTrackingApplication.class, args);
+    }
+}
